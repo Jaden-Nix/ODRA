@@ -1,0 +1,275 @@
+# ODRA-EVM Security Hardening Prompt for Autonomous Agent
+
+## Mission
+Implement comprehensive security hardening for a production-ready blockchain development platform that handles real money (staking, bridging, wallet connections, contract deployments). This platform will be published on Replit and accessed by real users.
+
+## Critical Security Vulnerabilities to Fix
+
+### Priority 1: Error Message Sanitization (CRITICAL - Information Disclosure)
+**Location**: `server/routes.ts` - ALL error handlers  
+**Issue**: API returns specific error details that help attackers understand the system
+**Example Problem**:
+```typescript
+// BAD - leaks implementation details
+res.status(500).json({ error: "Failed to connect wallet: " + (error as Error).message })
+```
+
+**Fix Required**:
+- Replace ALL `(error as Error).message` exposures with generic messages
+- Create `formatErrorResponse()` utility that:
+  - Logs full error internally (to console/logs)
+  - Returns generic message to client ("Operation failed. Support ID: xyz123")
+  - Generates unique support IDs for tracking
+- Apply to endpoints: wallet, deploy, compile, stake, bridge, analyze
+- Test: Verify no implementation details leak in any error response
+
+**Files to Modify**:
+- `server/routes.ts` (all error handlers)
+- `server/services/wallet.ts` (throw statements)
+- `server/services/deployment.ts` (throw statements)
+- `server/services/staking.ts` (throw statements)
+- `server/services/bridge.ts` (throw statements)
+
+---
+
+### Priority 2: Rate Limiting (CRITICAL - DoS Prevention)
+**Location**: `server/index.ts` - add global middleware  
+**Issue**: Any endpoint can be called unlimited times, enabling DoS attacks
+**What's at Risk**: Server resources, deployment flooding, balance query spam
+
+**Fix Required**:
+- Install `express-rate-limit` package
+- Create rate limiting middleware with:
+  - **Default**: 100 requests per 15 minutes per IP
+  - **Sensitive endpoints** (deploy, stake, bridge, compile): 10 requests per 15 minutes
+  - **Public endpoints** (stats, network): 300 requests per 15 minutes
+  - **Wallet connect**: 5 attempts per minute (prevent brute force)
+- Apply middleware globally before routes
+- Store in memory (or use Redis if available)
+- Return 429 with retry-after header when limited
+
+**Sensitive Endpoints to Rate Limit Harder**:
+- `POST /api/deploy` - 10/15min
+- `POST /api/stake` - 10/15min
+- `POST /api/bridge/initiate-transfer` - 10/15min
+- `POST /api/compile` - 15/15min
+- `POST /api/wallet/connect` - 5/min
+
+**Files to Create/Modify**:
+- Create `server/middleware/rateLimiter.ts`
+- Modify `server/index.ts` to apply middleware
+
+---
+
+### Priority 3: API Authentication for Sensitive Operations (CRITICAL - Authorization)
+**Location**: `server/middleware/` - create auth middleware  
+**Issue**: Anyone can call deployment/staking/bridge endpoints without wallet ownership verification
+**What's at Risk**: Unauthorized contract deployments, stolen staking fees, fraudulent bridge transfers
+
+**Fix Required**:
+- For all financial operations (deploy, stake, bridge, withdraw), require wallet signature verification
+- Create `requireWalletSignature` middleware that:
+  - Extracts `publicKey` and `signature` from request headers
+  - Verifies signature matches the public key (proves wallet ownership)
+  - Attaches verified public key to `req.user`
+  - Only then allows request to proceed
+- For sensitive endpoint: Check that `req.body.publicKey` matches `req.user.publicKey`
+
+**Implementation**:
+- Create `verifyWalletSignature()` in `server/services/wallet.ts`
+- Use `casper-js-sdk` for signature verification against the public key
+- Apply middleware to:
+  - `POST /api/deploy`
+  - `POST /api/stake`
+  - `POST /api/bridge/initiate-transfer`
+  - `POST /api/withdraw-stake`
+
+**Fallback** (if signature not available):
+- Require `X-Wallet-Public-Key` header on all sensitive requests
+- Validate it matches expected format (66 chars, hex, starts with 01/02)
+- Log all access with wallet key for audit trail
+
+**Files to Create/Modify**:
+- Create `server/middleware/walletAuth.ts`
+- Create `verifyWalletSignature()` in `server/services/wallet.ts`
+- Modify `server/routes.ts` - wrap sensitive endpoints with middleware
+
+---
+
+### Priority 4: CORS Configuration (CRITICAL - Cross-Site Attacks)
+**Location**: `server/index.ts` - add CORS middleware  
+**Issue**: API accessible from any malicious website without restrictions
+**What's at Risk**: Attackers embedding your app in their site, calling APIs on behalf of users
+
+**Fix Required**:
+- Install `cors` package
+- Configure CORS middleware with:
+  - Whitelist only YOUR domain(s) when published
+  - Allow credentials: true (for auth cookies if used)
+  - Safe methods only: GET, POST, PATCH, DELETE
+  - No wildcard origin (*)
+- In development: Allow localhost:5000, localhost:3000
+- In production: Allow only published domain
+
+**Example**:
+```typescript
+const corsOptions = {
+  origin: process.env.ALLOWED_ORIGINS?.split(',') || 'http://localhost:5000',
+  credentials: true,
+  methods: ['GET', 'POST', 'PATCH', 'DELETE'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+};
+app.use(cors(corsOptions));
+```
+
+**Files to Create/Modify**:
+- Create `server/middleware/corsConfig.ts`
+- Modify `server/index.ts` to apply CORS
+- Add `ALLOWED_ORIGINS` to env vars (.env.local, .env.production)
+
+---
+
+### Priority 5: Input Validation & Sanitization (HIGH - Injection Attacks)
+**Location**: `server/routes.ts` - all endpoints  
+**Issue**: Contract code, public keys, amounts lack sufficient validation
+
+**Fix Required**:
+- **Contract Code Size Limits**: Enforce max 1MB WASM size (prevent upload exhaustion)
+- **Compilation Requests**: Limit to 5000 lines per contract (prevent infinite loops)
+- **Public Key Validation**: Already have format check, add check for known validators/addresses
+- **Amounts**: Check for negative numbers, NaN, Infinity (JavaScript type coercion)
+- **Addresses**: Validate Ethereum addresses are valid hex (ethers.isAddress)
+- **Bridge Transfers**: Validate token names against whitelist only
+
+**Files to Modify**:
+- `server/routes.ts` - add validation before processing
+- Extend existing Zod schemas in `shared/schema.ts`:
+  ```typescript
+  compileRequestSchema.extend({
+    sourceCode: z.string().max(50000), // 5000 lines * 10 chars avg
+  })
+  ```
+
+---
+
+### Priority 6: Environment Variable Validation (HIGH - Configuration)
+**Location**: `server/config.ts` and startup  
+**Issue**: Sepolia RPC uses placeholder `YOUR_INFURA_KEY` as fallback
+**What's at Risk**: Invalid RPC calls, failed bridge transfers
+
+**Fix Required**:
+- On server startup, validate all required env vars are set and valid
+- Create `server/middleware/validateConfig.ts`:
+  ```typescript
+  function validateConfiguration() {
+    if (!process.env.SEPOLIA_RPC_ENDPOINT) {
+      throw new Error('SEPOLIA_RPC_ENDPOINT env var is required');
+    }
+    if (process.env.SEPOLIA_RPC_ENDPOINT.includes('YOUR_')) {
+      throw new Error('SEPOLIA_RPC_ENDPOINT contains placeholder - set real value');
+    }
+    // Validate it's a valid URL
+    try {
+      new URL(process.env.SEPOLIA_RPC_ENDPOINT);
+    } catch {
+      throw new Error('SEPOLIA_RPC_ENDPOINT is not a valid URL');
+    }
+  }
+  ```
+- Call this on app startup, fail fast if missing
+
+**Files to Modify**:
+- Create `server/middleware/validateConfig.ts`
+- Modify `server/index.ts` to run validation on startup
+
+---
+
+### Priority 7: Request Size Limits (HIGH - Resource Exhaustion)
+**Location**: `server/index.ts` - Express JSON middleware  
+**Issue**: No limit on request body size, enables upload attacks
+
+**Fix Required**:
+- Set `express.json({ limit: '5mb' })` - reasonable for WASM code
+- Set `express.urlencoded({ limit: '1mb' })` - for form data
+- Add separate route-level limits:
+  - Compilation endpoint: 10mb (for large contracts)
+  - Contract deployment: 50mb (WASM + metadata)
+  - Other endpoints: 1mb default
+
+```typescript
+app.use(express.json({ limit: '5mb' }));
+app.post('/api/compile', express.json({ limit: '10mb' }), compileHandler);
+```
+
+**Files to Modify**:
+- `server/index.ts` - apply global size limits
+- `server/routes.ts` - apply per-route overrides
+
+---
+
+### Priority 8: Logging & Error Monitoring (MEDIUM - Debugging/Compliance)
+**Location**: `server/index.ts` and all error handlers  
+**Issue**: Errors logged to console; no structured error tracking
+**What's at Risk**: Security incidents not tracked, no audit trail
+
+**Fix Required**:
+- Implement structured logging with timestamps, request IDs, severity levels
+- Create `server/logging/logger.ts`:
+  - Log errors with: timestamp, request ID, error type, stack trace
+  - NEVER log sensitive data (private keys, wallet addresses, amounts)
+  - Use log levels: ERROR, WARN, INFO, DEBUG
+- Attach unique request ID to each request
+- Log all sensitive operations:
+  - Wallet connections/disconnections
+  - All deployments with hash
+  - All bridge transfers with amount and fee
+  - Failed authentications (rate limit hit, invalid signature)
+
+**Files to Create/Modify**:
+- Create `server/logging/logger.ts`
+- Modify `server/index.ts` - add request ID middleware, use logger
+- Update all error handlers to use logger instead of console.error
+
+---
+
+## Implementation Checklist
+
+- [ ] **Error Sanitization**: Generic error messages, no implementation details
+- [ ] **Rate Limiting**: Express middleware applied to all routes
+- [ ] **Wallet Auth**: Signature verification for sensitive operations
+- [ ] **CORS**: Configured with whitelist, credentials allowed
+- [ ] **Input Validation**: Size limits, format checks, type validation
+- [ ] **Env Var Validation**: All required vars checked on startup
+- [ ] **Request Size Limits**: Global and per-route limits applied
+- [ ] **Structured Logging**: All errors and sensitive ops logged
+- [ ] **Testing**: Verify rate limiting works (send >limit requests)
+- [ ] **Testing**: Verify CORS rejects unauthorized origins
+- [ ] **Testing**: Verify errors don't leak implementation details
+
+## Testing Commands
+
+```bash
+# Test rate limiting (should get 429 after 5 attempts)
+for i in {1..10}; do curl http://localhost:5000/api/wallet/connect -X POST; done
+
+# Test CORS (should reject)
+curl -H "Origin: http://evil.com" http://localhost:5000/api/dashboard/stats
+
+# Test error sanitization
+curl -X POST http://localhost:5000/api/compile -d '{"invalid":"data"}' \
+  -H "Content-Type: application/json"
+```
+
+## Security Best Practices References
+- OWASP Top 10 2023: A01 Broken Access Control, A07 Identification & Auth Failures
+- CWE-200: Exposure of Sensitive Information to Unauthorized Actor
+- CWE-400: Uncontrolled Resource Consumption
+
+## Deployment Checklist Before Publishing
+- [ ] All rate limits tested and working
+- [ ] CORS configured with production domain
+- [ ] Env vars properly set (no placeholders)
+- [ ] Error messages sanitized (no technical details)
+- [ ] Logging in place and working
+- [ ] Sensitive operations require signature verification
+- [ ] Run security scan: `npm audit`
