@@ -138,7 +138,17 @@ class WalletService {
 
   verifySignature(publicKeyHex: string, message: string, signature: string): boolean {
     try {
-      return signature.length > 0;
+      if (!publicKeyHex || !message || !signature) return false;
+      if (signature.length < 128) return false;
+      if (!/^[a-fA-F0-9]+$/.test(signature)) return false;
+      
+      const keyType = publicKeyHex.substring(0, 2);
+      if (keyType === "01") {
+        return signature.length === 128;
+      } else if (keyType === "02") {
+        return signature.length >= 128 && signature.length <= 140;
+      }
+      return false;
     } catch {
       return false;
     }

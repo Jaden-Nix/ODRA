@@ -41,7 +41,11 @@ class BridgeService {
       ? CONFIG.bridge.feeCasperToEth 
       : CONFIG.bridge.feeEthToCasper;
     
-    const fee = amount * (feePercentage / 100);
+    // FIXED: Use BigInt to prevent floating-point precision loss
+    const feeBasisPoints = Math.floor(feePercentage * 100); // Convert to basis points
+    const amountInSmallestUnit = Math.floor(amount * 1_000_000); // Scale up
+    const feeInSmallestUnit = (BigInt(amountInSmallestUnit) * BigInt(feeBasisPoints)) / BigInt(1_000_000);
+    const fee = Number(feeInSmallestUnit) / 1_000_000; // Scale back down
     const totalCost = amount + fee;
     
     const estimatedTime = sourceChain === "casper-test" 
@@ -49,9 +53,9 @@ class BridgeService {
       : "20-40 minutes";
 
     return {
-      fee,
+      fee: Math.round(fee * 1_000_000) / 1_000_000, // Round to 6 decimals
       feePercentage,
-      totalCost,
+      totalCost: Math.round(totalCost * 1_000_000) / 1_000_000,
       estimatedTime,
     };
   }

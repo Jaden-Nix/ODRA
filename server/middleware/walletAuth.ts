@@ -119,10 +119,11 @@ export function optionalWalletAuth(
     req.body?.publicKeyHex ||
     req.body?.publicKey;
 
+  // FIXED: Only set if valid format; mark as unverified (need signature verification)
   if (walletPublicKey && isValidPublicKeyFormat(walletPublicKey)) {
     req.verifiedWallet = {
       publicKey: walletPublicKey,
-      verified: true,
+      verified: false, // IMPORTANT: Still requires signature verification!
     };
   }
 

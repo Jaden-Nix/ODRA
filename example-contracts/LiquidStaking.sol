@@ -11,6 +11,10 @@ contract LiquidStaking {
     string public symbol = "cCSPR";
     uint8 public decimals = 9;
 
+    // FIXED: Added constant to check for overflow protection
+    uint256 private constant MAX_UINT256 = type(uint256).max;
+    uint256 private constant MAX_STAKE = 10_000_000 ether; // 10M ETH max stake
+
     uint256 public totalStaked = 0;
     uint256 public totalShares = 0;
     uint256 public accumulatedRewards = 0;
@@ -35,6 +39,9 @@ contract LiquidStaking {
      */
     function stake() public payable {
         require(msg.value > 0, "Must stake some amount");
+        // FIXED: Added overflow check
+        require(totalStaked + msg.value <= MAX_STAKE, "Stake limit exceeded");
+        require(totalStaked <= MAX_UINT256 - msg.value, "Overflow protection");
 
         updateRewards();
 
@@ -42,8 +49,16 @@ contract LiquidStaking {
         if (totalShares == 0) {
             sharesToMint = msg.value;
         } else {
+            // FIXED: Check for division by zero
+            require(totalStaked > 0, "Invalid state");
             sharesToMint = (msg.value * totalShares) / totalStaked;
         }
+
+        // FIXED: Check for overflow on all additions
+        require(stakedBalance[msg.sender] <= MAX_UINT256 - msg.value, "Balance overflow");
+        require(shareBalance[msg.sender] <= MAX_UINT256 - sharesToMint, "Share overflow");
+        require(totalStaked <= MAX_UINT256 - msg.value, "Total stake overflow");
+        require(totalShares <= MAX_UINT256 - sharesToMint, "Total shares overflow");
 
         stakedBalance[msg.sender] += msg.value;
         shareBalance[msg.sender] += sharesToMint;
@@ -56,6 +71,7 @@ contract LiquidStaking {
     /**
      * @dev Unstake cCSPR, receive CSPR + accrued rewards
      * Amount received = (shares * totalStaked) / totalShares
+     * FIXED: Checks-Effects-Interactions pattern to prevent reentrancy
      */
     function unstake(uint256 _shares) public {
         require(shareBalance[msg.sender] >= _shares, "Insufficient shares");
@@ -65,15 +81,17 @@ contract LiquidStaking {
         uint256 amountToReceive = (_shares * totalStaked) / totalShares;
         require(amountToReceive > 0, "Insufficient balance");
 
+        // EFFECTS: Update state BEFORE external call (CEI pattern)
         shareBalance[msg.sender] -= _shares;
         stakedBalance[msg.sender] -= amountToReceive;
         totalShares -= _shares;
         totalStaked -= amountToReceive;
 
+        emit Unstake(msg.sender, _shares, amountToReceive);
+
+        // INTERACTIONS: External call AFTER state update
         (bool success, ) = msg.sender.call{value: amountToReceive}("");
         require(success, "Transfer failed");
-
-        emit Unstake(msg.sender, _shares, amountToReceive);
     }
 
     /**
