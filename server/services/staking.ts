@@ -40,24 +40,15 @@ export interface StakingSummary {
 
 class StakingService {
   async getAllValidators(): Promise<ValidatorWithAPY[]> {
-    try {
-      const validators = await casperService.getValidators();
+    const validators = await casperService.getValidators();
 
-      if (!validators || validators.length === 0) {
-        return [];
-      }
-
-      return validators.map((validator, index) => ({
-        ...validator,
-        totalStakeCSPR: motesToCSPR(validator.totalStake),
-        commissionPercentage: validator.commission,
-        apy: this.calculateValidatorAPY(validator),
-        rank: index + 1,
-      }));
-    } catch (error) {
-      console.error("Failed to get validators:", error);
-      return [];
-    }
+    return validators.map((validator, index) => ({
+      ...validator,
+      totalStakeCSPR: motesToCSPR(validator.totalStake),
+      commissionPercentage: validator.commission,
+      apy: this.calculateValidatorAPY(validator),
+      rank: index + 1,
+    }));
   }
 
   private calculateValidatorAPY(validator: any): number {

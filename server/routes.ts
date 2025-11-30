@@ -49,7 +49,11 @@ export async function registerRoutes(
         networkName: CONFIG.casper.networkName,
       });
     } catch (error) {
-      res.status(500).json({ error: "Failed to fetch network status" });
+      console.error("Network status error:", error);
+      res.status(503).json({ 
+        error: "Unable to connect to Casper testnet",
+        details: (error as Error).message 
+      });
     }
   });
 
@@ -58,7 +62,11 @@ export async function registerRoutes(
       const validators = await stakingService.getAllValidators();
       res.json(validators);
     } catch (error) {
-      res.status(500).json({ error: "Failed to fetch validators" });
+      console.error("Validators error:", error);
+      res.status(503).json({ 
+        error: "Unable to fetch validators from Casper testnet",
+        details: (error as Error).message 
+      });
     }
   });
 
@@ -522,7 +530,11 @@ export async function registerRoutes(
       const validators = await stakingService.getAllValidators();
       res.json(validators);
     } catch (error) {
-      res.status(500).json({ error: "Failed to fetch validators" });
+      console.error("Staking validators error:", error);
+      res.status(503).json({ 
+        error: "Unable to fetch validators from Casper testnet",
+        details: (error as Error).message 
+      });
     }
   });
 

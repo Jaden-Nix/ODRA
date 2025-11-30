@@ -3,10 +3,10 @@ export const CONFIG = {
     chainName: "casper-test",
     networkName: "casper-testnet",
     rpcEndpoints: [
+      "https://node.testnet.casper.network/rpc",
       "https://rpc.testnet.casperlabs.io/rpc",
-      "https://node-clarity-testnet.make.services/rpc",
     ],
-    statusEndpoint: "https://rpc.testnet.casperlabs.io/status",
+    statusEndpoint: "https://node.testnet.casper.network:8888/status",
     explorerUrl: "https://testnet.cspr.live",
     baseGasCost: 2_500_000_000,
     perByteCost: 1_000,

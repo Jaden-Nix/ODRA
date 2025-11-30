@@ -1,8 +1,8 @@
 const CASPER_RPC_ENDPOINTS = [
+  "https://node.testnet.casper.network/rpc",
   "https://rpc.testnet.casperlabs.io/rpc",
-  "https://node-clarity-testnet.make.services/rpc",
 ];
-const CASPER_TESTNET_STATUS = "https://rpc.testnet.casperlabs.io/status";
+const CASPER_TESTNET_STATUS = "https://node.testnet.casper.network:8888/status";
 const NETWORK_NAME = "casper-test";
 const CHAIN_NAME = "casper-test";
 
@@ -179,57 +179,17 @@ class CasperService {
       const auctionInfo = await this.rpcCall("state_get_auction_info", []);
       const bids = auctionInfo?.auction_state?.bids || [];
 
-      if (bids.length > 0) {
-        return bids.slice(0, 20).map((bid: any) => ({
-          publicKey: bid.public_key,
-          delegatorsCount: bid.bid?.delegators?.length || 0,
-          totalStake: bid.bid?.staked_amount || "0",
-          commission: bid.bid?.delegation_rate || 0,
-          isActive: !bid.bid?.inactive,
-        }));
-      }
+      return bids.slice(0, 20).map((bid: any) => ({
+        publicKey: bid.public_key,
+        delegatorsCount: bid.bid?.delegators?.length || 0,
+        totalStake: bid.bid?.staked_amount || "0",
+        commission: bid.bid?.delegation_rate || 0,
+        isActive: !bid.bid?.inactive,
+      }));
     } catch (error) {
       console.error("Failed to get validators:", error);
+      throw error;
     }
-
-    // Return mock validators as fallback for sandbox/offline development
-    return [
-      {
-        publicKey: "01a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1",
-        delegatorsCount: 42,
-        totalStake: "50000000000000",
-        commission: 5,
-        isActive: true,
-      },
-      {
-        publicKey: "01b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2",
-        delegatorsCount: 38,
-        totalStake: "48000000000000",
-        commission: 7,
-        isActive: true,
-      },
-      {
-        publicKey: "01c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3",
-        delegatorsCount: 35,
-        totalStake: "45000000000000",
-        commission: 6,
-        isActive: true,
-      },
-      {
-        publicKey: "01d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4",
-        delegatorsCount: 31,
-        totalStake: "42000000000000",
-        commission: 8,
-        isActive: true,
-      },
-      {
-        publicKey: "01e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5",
-        delegatorsCount: 28,
-        totalStake: "40000000000000",
-        commission: 5,
-        isActive: true,
-      },
-    ];
   }
 
   async getDeployStatus(deployHash: string): Promise<DeployResult> {
