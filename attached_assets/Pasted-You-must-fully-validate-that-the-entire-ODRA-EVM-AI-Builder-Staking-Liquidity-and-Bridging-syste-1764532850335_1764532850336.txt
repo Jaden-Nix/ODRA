@@ -1,0 +1,64 @@
+You must fully validate that the entire ODRA-EVM, AI-Builder, Staking, Liquidity, and Bridging system is 100% built, deployed, and functional on the Casper Testnet with zero missing components. Do not assume anything. You must verify every single part through logic tracing, contract execution models, dependency analysis, integration checks, API flow simulation, and full system reconstruction.
+
+Your objectives:
+	1.	Verify that all smart contracts exist, compile, deploy, and execute on Casper Testnet.
+	2.	Verify the Solidity → Wasm → Casper Deployment pipeline works end-to-end.
+	3.	Verify the ODRA wrappers execute correctly and maintain state across calls.
+	4.	Verify AI modules (code generation, code review, gas optimization, autopilot deployer) are REAL and connected.
+	5.	Verify the Liquid Staking (cCSPR) contract works with:
+	•	live staking
+	•	reward ticking
+	•	minting
+	•	burning
+	•	withdrawal logic
+	•	Casper RPC calls
+	6.	Verify the cross-chain module actually transmits cCSPR to Sepolia (or target EVM chain) using a real transaction and not a simulation.
+	7.	Verify the frontend integrates correctly with the backend and the network RPCs.
+	8.	Verify the portfolio dashboard reads REAL on-chain balances from Casper testnet.
+	9.	Verify the AI assistant is not placeholder logic — it must connect to model, analyze contracts, and provide deployable outputs.
+	10.	Verify there are NO missing endpoints, functions, errors, TODOs, partials, stubs, or dummy returns anywhere in the codebase.
+	11.	Verify that EVERY key component below is present and functional:
+
+	•	ODRA-EVM Compiler
+	•	Casper-compatible ABI mapping layer
+	•	Casper RPC interfaces
+	•	Contract deployment manager
+	•	User wallet signer
+	•	AI contract generator
+	•	AI code reviewer
+	•	AI optimizer
+	•	cCSPR staking contract
+	•	cCSPR reward engine
+	•	Bridge (Casper → EVM)
+	•	Bridge UI
+	•	Dashboard UI
+	•	Contract history
+	•	Deployment history
+	•	Logs + error handling
+
+	12.	Your final output MUST:
+
+	•	explicitly list every module
+	•	confirm its existence
+	•	confirm its functionality
+	•	confirm its testnet deployment
+	•	confirm its real execution
+	•	confirm its transactions
+	•	confirm its integration
+
+If ANY module is missing, incomplete, faulty, or untested, you must:
+• state EXACTLY what failed
+• explain the root cause
+• output the corrected code
+• fix the integration
+• redeploy the contract
+• repair the system
+• re-run verification
+• repeat until EVERYTHING is 100% complete.
+
+Do not produce a summary.
+Do not be vague.
+Produce a step-by-step verification with explicit confirmations and hard checks for every subsystem.
+If the system is fully built, deployed, and working:
+output a final certificate: “ALL SYSTEMS 100% VERIFIED ON CASPER TESTNET.”
+If not, continue repairing until it is.
