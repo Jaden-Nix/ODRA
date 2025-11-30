@@ -29,9 +29,6 @@ function createLimiter(options: {
         retryAfter: Math.ceil(options.windowMs / 1000),
       });
     },
-    keyGenerator: (req: Request): string => {
-      return req.ip || req.headers["x-forwarded-for"]?.toString() || "unknown";
-    },
   });
 }
 

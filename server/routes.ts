@@ -16,6 +16,15 @@ import {
   bridgeRequestSchema,
 } from "@shared/schema";
 import solc from "solc";
+import {
+  walletConnectLimiter,
+  sensitiveLimiter,
+  compileLimiter,
+  publicLimiter,
+} from "./middleware/rateLimiter";
+import { formatErrorResponse, isZodError } from "./middleware/errorHandler";
+import { requireWalletHeader, optionalWalletAuth } from "./middleware/walletAuth";
+import { logger } from "./logging/logger";
 
 function generateCasperWasmModule(contractName: string, bytecode: string, abi: any[]): string {
   const evmBytecode = bytecode.startsWith('0x') ? bytecode.slice(2) : bytecode;
@@ -139,7 +148,7 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
 
-  app.get("/api/dashboard/stats", async (req, res) => {
+  app.get("/api/dashboard/stats", publicLimiter, async (req, res) => {
     try {
       const stats = await dbStorage.getDashboardStats();
       const networkStatus = await casperService.getNetworkStatus();
@@ -152,12 +161,12 @@ export async function registerRoutes(
         chainName: networkStatus.chainName,
       });
     } catch (error) {
-      console.error("Dashboard stats error:", error);
-      res.status(500).json({ error: "Failed to fetch dashboard stats" });
+      const { error: errorMsg, supportId } = formatErrorResponse(error, "network");
+      res.status(500).json({ error: errorMsg, supportId });
     }
   });
 
-  app.get("/api/network/status", async (req, res) => {
+  app.get("/api/network/status", publicLimiter, async (req, res) => {
     try {
       const status = await casperService.getNetworkStatus();
       res.json({
@@ -166,38 +175,37 @@ export async function registerRoutes(
         networkName: CONFIG.casper.networkName,
       });
     } catch (error) {
-      console.error("Network status error:", error);
-      res.status(503).json({ 
-        error: "Unable to connect to Casper testnet",
-        details: (error as Error).message 
-      });
+      const { error: errorMsg, supportId } = formatErrorResponse(error, "network");
+      res.status(503).json({ error: errorMsg, supportId });
     }
   });
 
-  app.get("/api/network/validators", async (req, res) => {
+  app.get("/api/network/validators", publicLimiter, async (req, res) => {
     try {
       const validators = await stakingService.getAllValidators();
       res.json(validators);
     } catch (error) {
-      console.error("Validators error:", error);
-      res.status(503).json({ 
-        error: "Unable to fetch validators from Casper testnet",
-        details: (error as Error).message 
-      });
+      const { error: errorMsg, supportId } = formatErrorResponse(error, "network");
+      res.status(503).json({ error: errorMsg, supportId });
     }
   });
 
-  app.post("/api/wallet/connect", async (req, res) => {
+  app.post("/api/wallet/connect", walletConnectLimiter, async (req, res) => {
     try {
       const { publicKeyHex } = z.object({
         publicKeyHex: z.string().min(64).max(70),
       }).parse(req.body);
 
+      logger.auditLog("Wallet connection attempt", { publicKeyPrefix: publicKeyHex.substring(0, 10) });
       const wallet = await walletService.connectWallet(publicKeyHex);
       res.json(wallet);
     } catch (error) {
-      console.error("Wallet connection error:", error);
-      res.status(400).json({ error: (error as Error).message || "Failed to connect wallet" });
+      if (isZodError(error)) {
+        const { error: errorMsg, supportId } = formatErrorResponse(error, "validation");
+        return res.status(400).json({ error: errorMsg, supportId });
+      }
+      const { error: errorMsg, supportId } = formatErrorResponse(error, "wallet");
+      res.status(400).json({ error: errorMsg, supportId });
     }
   });
 
@@ -207,10 +215,12 @@ export async function registerRoutes(
         publicKey: z.string(),
       }).parse(req.body);
 
+      logger.auditLog("Wallet disconnection", { publicKeyPrefix: publicKey.substring(0, 10) });
       await walletService.disconnectWallet(publicKey);
       res.json({ success: true });
     } catch (error) {
-      res.status(400).json({ error: "Failed to disconnect wallet" });
+      const { error: errorMsg, supportId } = formatErrorResponse(error, "wallet");
+      res.status(400).json({ error: errorMsg, supportId });
     }
   });
 
@@ -223,7 +233,8 @@ export async function registerRoutes(
       const balance = await walletService.refreshWalletBalance(publicKey);
       res.json(balance);
     } catch (error) {
-      res.status(400).json({ error: "Failed to fetch wallet balance" });
+      const { error: errorMsg, supportId } = formatErrorResponse(error, "wallet");
+      res.status(400).json({ error: errorMsg, supportId });
     }
   });
 
@@ -238,12 +249,17 @@ export async function registerRoutes(
       
       res.json(status);
     } catch (error) {
-      res.status(400).json({ error: "Failed to get wallet status" });
+      const { error: errorMsg, supportId } = formatErrorResponse(error, "wallet");
+      res.status(400).json({ error: errorMsg, supportId });
     }
   });
 
-  app.post("/api/compile", async (req, res) => {
+  app.post("/api/compile", compileLimiter, async (req, res) => {
     try {
+      if (req.body?.code && req.body.code.length > 500000) {
+        const { error: errorMsg, supportId } = formatErrorResponse(new Error("Code size exceeds limit"), "compilation");
+        return res.status(400).json({ error: errorMsg, supportId });
+      }
       const { code, contractName } = compileRequestSchema.parse(req.body);
       const startTime = Date.now();
 
@@ -416,17 +432,12 @@ export async function registerRoutes(
         timestamp: compilation.createdAt.toISOString(),
       });
     } catch (error) {
-      if (error instanceof z.ZodError) {
-        return res.status(400).json({ 
-          error: "Validation failed", 
-          details: error.errors 
-        });
+      if (isZodError(error)) {
+        const { error: errorMsg, supportId } = formatErrorResponse(error, "validation");
+        return res.status(400).json({ error: errorMsg, supportId });
       }
-      console.error("Compilation error:", error);
-      res.status(500).json({ 
-        error: "Compilation failed", 
-        details: (error as Error).message 
-      });
+      const { error: errorMsg, supportId } = formatErrorResponse(error, "compilation");
+      res.status(500).json({ error: errorMsg, supportId });
     }
   });
 
@@ -463,17 +474,12 @@ export async function registerRoutes(
         aiPowered: aiService.isAvailable(),
       });
     } catch (error) {
-      if (error instanceof z.ZodError) {
-        return res.status(400).json({ 
-          error: "Validation failed", 
-          details: error.errors 
-        });
+      if (isZodError(error)) {
+        const { error: errorMsg, supportId } = formatErrorResponse(error, "validation");
+        return res.status(400).json({ error: errorMsg, supportId });
       }
-      console.error("Analysis error:", error);
-      res.status(500).json({ 
-        error: "Analysis failed", 
-        details: (error as Error).message 
-      });
+      const { error: errorMsg, supportId } = formatErrorResponse(error, "analysis");
+      res.status(500).json({ error: errorMsg, supportId });
     }
   });
 
@@ -486,7 +492,8 @@ export async function registerRoutes(
       const suggestions = await aiService.suggestCodeImprovements(contractCode);
       res.json({ suggestions, aiPowered: aiService.isAvailable() });
     } catch (error) {
-      res.status(400).json({ error: "Failed to generate suggestions" });
+      const { error: errorMsg, supportId } = formatErrorResponse(error, "analysis");
+      res.status(400).json({ error: errorMsg, supportId });
     }
   });
 
@@ -510,11 +517,8 @@ export async function registerRoutes(
         aiPowered: aiService.isAvailable(),
       });
     } catch (error) {
-      console.error("AI autopilot error:", error);
-      res.status(500).json({ 
-        error: "Autopilot optimization failed", 
-        details: (error as Error).message 
-      });
+      const { error: errorMsg, supportId } = formatErrorResponse(error, "analysis");
+      res.status(500).json({ error: errorMsg, supportId });
     }
   });
 
@@ -538,15 +542,12 @@ export async function registerRoutes(
         aiPowered: aiService.isAvailable(),
       });
     } catch (error) {
-      console.error("AI code review error:", error);
-      res.status(500).json({ 
-        error: "Code review failed", 
-        details: (error as Error).message 
-      });
+      const { error: errorMsg, supportId } = formatErrorResponse(error, "analysis");
+      res.status(500).json({ error: errorMsg, supportId });
     }
   });
 
-  app.get("/api/security/recent", async (req, res) => {
+  app.get("/api/security/recent", publicLimiter, async (req, res) => {
     try {
       const analyses = await dbStorage.getRecentSecurityAnalyses();
       res.json(analyses.map(a => ({
@@ -554,19 +555,27 @@ export async function registerRoutes(
         analyzedAt: a.analyzedAt.toISOString(),
       })));
     } catch (error) {
-      res.status(500).json({ error: "Failed to fetch security analyses" });
+      const { error: errorMsg, supportId } = formatErrorResponse(error, "default");
+      res.status(500).json({ error: errorMsg, supportId });
     }
   });
 
-  app.post("/api/deploy", async (req, res) => {
+  app.post("/api/deploy", sensitiveLimiter, optionalWalletAuth, async (req, res) => {
     try {
       const { wasmCode, contractName, publicKeyHex, contractId, network } = z.object({
         wasmCode: z.string().optional(),
-        contractName: z.string().min(1),
+        contractName: z.string().min(1).max(100),
         publicKeyHex: z.string().optional(),
         contractId: z.string().optional(),
         network: z.string().default("casper-testnet"),
       }).parse(req.body);
+
+      if (wasmCode && wasmCode.length > 50000000) {
+        const { error: errorMsg, supportId } = formatErrorResponse(new Error("WASM code exceeds size limit"), "deployment");
+        return res.status(400).json({ error: errorMsg, supportId });
+      }
+
+      logger.auditLog("Deployment initiated", { contractName, network, hasWalletKey: !!publicKeyHex });
 
       if (publicKeyHex && wasmCode) {
         const result = await deploymentService.deployContract({
@@ -614,7 +623,7 @@ export async function registerRoutes(
             blockHeight: 1234567 + Math.floor(Math.random() * 1000),
           });
         } catch (updateError) {
-          console.error("Failed to update deployment:", updateError);
+          logger.error("Failed to update deployment", { deploymentId: deployment.id });
         }
       }, 5000);
 
@@ -624,11 +633,12 @@ export async function registerRoutes(
         timestamp: deployment.createdAt.toISOString(),
       });
     } catch (error) {
-      console.error("Deployment error:", error);
-      res.status(500).json({ 
-        error: "Deployment failed", 
-        details: (error as Error).message 
-      });
+      if (isZodError(error)) {
+        const { error: errorMsg, supportId } = formatErrorResponse(error, "validation");
+        return res.status(400).json({ error: errorMsg, supportId });
+      }
+      const { error: errorMsg, supportId } = formatErrorResponse(error, "deployment");
+      res.status(500).json({ error: errorMsg, supportId });
     }
   });
 
@@ -760,9 +770,16 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/stake", async (req, res) => {
+  app.post("/api/stake", sensitiveLimiter, optionalWalletAuth, async (req, res) => {
     try {
       const data = stakeRequestSchema.parse(req.body);
+
+      if (data.amount < 0 || !isFinite(data.amount)) {
+        const { error: errorMsg, supportId } = formatErrorResponse(new Error("Invalid amount"), "staking");
+        return res.status(400).json({ error: errorMsg, supportId });
+      }
+      
+      logger.auditLog("Staking initiated", { amount: data.amount, duration: data.duration });
       
       if (data.publicKeyHex && data.validatorPublicKey) {
         const position = await stakingService.createStakingPosition({
@@ -802,17 +819,23 @@ export async function registerRoutes(
         endDate: position.endDate?.toISOString(),
       });
     } catch (error) {
-      console.error("Staking error:", error);
-      res.status(400).json({ error: (error as Error).message || "Staking failed" });
+      if (isZodError(error)) {
+        const { error: errorMsg, supportId } = formatErrorResponse(error, "validation");
+        return res.status(400).json({ error: errorMsg, supportId });
+      }
+      const { error: errorMsg, supportId } = formatErrorResponse(error, "staking");
+      res.status(400).json({ error: errorMsg, supportId });
     }
   });
 
-  app.post("/api/stake/withdraw", async (req, res) => {
+  app.post("/api/stake/withdraw", sensitiveLimiter, requireWalletHeader, async (req, res) => {
     try {
       const { publicKeyHex, positionId } = z.object({
         publicKeyHex: z.string(),
         positionId: z.number(),
       }).parse(req.body);
+
+      logger.auditLog("Stake withdrawal initiated", { positionId });
 
       const result = await stakingService.withdrawStaking({
         publicKeyHex,
@@ -821,7 +844,12 @@ export async function registerRoutes(
 
       res.json(result);
     } catch (error) {
-      res.status(400).json({ error: (error as Error).message || "Withdrawal failed" });
+      if (isZodError(error)) {
+        const { error: errorMsg, supportId } = formatErrorResponse(error, "validation");
+        return res.status(400).json({ error: errorMsg, supportId });
+      }
+      const { error: errorMsg, supportId } = formatErrorResponse(error, "staking");
+      res.status(400).json({ error: errorMsg, supportId });
     }
   });
 
@@ -891,9 +919,27 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/bridge", async (req, res) => {
+  app.post("/api/bridge", sensitiveLimiter, optionalWalletAuth, async (req, res) => {
     try {
       const data = bridgeRequestSchema.parse(req.body);
+
+      if (data.amount < 0 || !isFinite(data.amount)) {
+        const { error: errorMsg, supportId } = formatErrorResponse(new Error("Invalid amount"), "bridge");
+        return res.status(400).json({ error: errorMsg, supportId });
+      }
+
+      const supportedTokens = bridgeService.getSupportedTokens();
+      if (!supportedTokens.includes(data.token)) {
+        const { error: errorMsg, supportId } = formatErrorResponse(new Error("Unsupported token"), "bridge");
+        return res.status(400).json({ error: errorMsg, supportId });
+      }
+
+      logger.auditLog("Bridge transfer initiated", { 
+        amount: data.amount, 
+        token: data.token, 
+        sourceChain: data.sourceChain,
+        destinationChain: data.destinationChain,
+      });
       
       if (data.publicKeyHex && data.destinationAddress) {
         if (data.sourceChain === "casper-test") {
@@ -956,7 +1002,7 @@ export async function registerRoutes(
             }, 2000);
           }, 2000);
         } catch (updateError) {
-          console.error("Failed to update bridge transaction:", updateError);
+          logger.error("Failed to update bridge transaction", { txId: tx.id });
         }
       }, 2000);
 
@@ -968,8 +1014,12 @@ export async function registerRoutes(
         aiPowered: aiService.isAvailable(),
       });
     } catch (error) {
-      console.error("Bridge error:", error);
-      res.status(400).json({ error: (error as Error).message || "Bridge transaction failed" });
+      if (isZodError(error)) {
+        const { error: errorMsg, supportId } = formatErrorResponse(error, "validation");
+        return res.status(400).json({ error: errorMsg, supportId });
+      }
+      const { error: errorMsg, supportId } = formatErrorResponse(error, "bridge");
+      res.status(400).json({ error: errorMsg, supportId });
     }
   });
 
