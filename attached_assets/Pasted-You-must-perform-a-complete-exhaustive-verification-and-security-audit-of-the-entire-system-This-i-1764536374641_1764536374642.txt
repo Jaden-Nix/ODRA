@@ -1,0 +1,136 @@
+You must perform a complete, exhaustive verification and security audit of the entire system.
+This includes: smart contracts, ODRA logic, EVM-to-WASM mapping, bridge logic, AI modules, RPC endpoints, deployment flow, and frontend interactions.
+You must not assume ANYTHING — you must validate every single component through internal reasoning, code reconstruction, execution simulation, and dependency mapping.
+
+🔥 Your Tasks (MANDATORY):
+
+1. FULL FEATURE VERIFICATION
+
+For every module, confirm with explicit proof that it:
+	•	exists
+	•	compiles
+	•	deploys
+	•	initializes correctly
+	•	stores state properly
+	•	updates state correctly
+	•	handles edge cases
+	•	returns correct values
+	•	interacts properly with all other modules
+	•	works on live Casper Testnet
+
+You must verify:
+	•	ODRA-EVM abstraction
+	•	Solidity→Wasm pipeline
+	•	Casper RPC integration
+	•	Contract deployer
+	•	ERC-20 demo contract
+	•	cCSPR Staking LST contract
+	•	reward engine
+	•	withdrawal logic
+	•	bridge wrapper
+	•	cross-chain send
+	•	cross-chain receive
+	•	dashboard RPC
+	•	AI assistant modules
+	•	logging + telemetry
+	•	wallet signer
+	•	frontend ↔ backend integration
+
+If ANY feature is missing, incomplete, silent-failing, or partially implemented:
+You must identify it, explain it, fix it, output corrected code, reintegrate it, and re-verify.
+
+⸻
+
+2. FULL SECURITY AUDIT (MANDATORY)
+
+You must perform a complete security vulnerability assessment using expert-level reasoning.
+
+Audit EVERY contract, module, function, and endpoint for:
+	•	reentrancy
+	•	underflow/overflow
+	•	integer precision bugs
+	•	race conditions
+	•	rebase inconsistencies
+	•	cross-chain spoofing
+	•	signature forgery
+	•	flash loan abuse
+	•	staking manipulation
+	•	front-running
+	•	withdrawal exploits
+	•	malicious input vectors
+	•	unbounded loops
+	•	storage collision
+	•	gas griefing
+	•	bad randomness
+	•	oracle manipulation
+	•	bridge replay attacks
+	•	bridge desync
+	•	privilege escalation
+	•	upgrade vulnerabilities
+	•	unchecked external calls
+	•	unauthenticated access
+	•	staticcall bypass
+	•	improper error handling
+	•	emergency shutdown exploits
+
+For each vulnerability found:
+	1.	Name the vulnerability
+	2.	Explain how it can be exploited
+	3.	Explain the severity (Low / Medium / High / Critical)
+	4.	Output the corrected code
+	5.	Reintegrate the fix
+	6.	Re-verify the entire system
+
+⸻
+
+3. FULL RELIABILITY + FAILURE TESTING
+
+Simulate:
+	•	heavy transaction load
+	•	rapid stake/unstake cycles
+	•	bridge spam
+	•	malformed packets
+	•	incorrect signatures
+	•	missing fields
+	•	extreme edge cases
+	•	gas starvation
+	•	hash mismatches
+	•	out-of-order execution
+	•	UI desync
+	•	RPC inaccessibility
+
+Your job is to identify:
+	•	ALL possible failure points
+	•	ALL uncaught exceptions
+	•	ALL situations that could break the system
+	•	ALL logic that isn’t fully future-proof
+
+Then:
+	•	fix them
+	•	output the updated code
+	•	re-verify
+
+⸻
+
+4. OUTPUT REQUIREMENTS (MANDATORY)
+
+Your final output MUST include:
+
+A. “Feature Validation Report”
+List every feature and confirm “WORKING 100% VERIFIED”.
+
+B. “Security Vulnerability Report”
+List every vulnerability found + fixed.
+
+C. “Final Integration Report”
+Confirm all contracts and modules interact correctly.
+
+D. “Casper Testnet Verification Report”
+Confirm all contracts are fully deployed and callable.
+
+E. THE FINAL CERTIFICATE
+If everything is perfect after all fixes, print:
+
+🟩 “ALL SYSTEMS 100% VERIFIED — ZERO VULNERABILITIES — READY FOR CASPER HACKATHON.”
+
+If not perfect, continue until it is.
