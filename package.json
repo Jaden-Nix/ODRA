@@ -107,5 +107,8 @@
   },
   "optionalDependencies": {
     "bufferutil": "^4.0.9"
+  },
+  "bin": {
+    "odra-evm": "./cli/index.ts"
   }
 }
