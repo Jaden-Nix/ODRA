@@ -20,12 +20,12 @@ declare module "http" {
   }
 }
 
+app.set("trust proxy", 1);
+
 app.use(requestIdMiddleware);
 
 app.use(corsMiddleware);
 app.use(securityHeaders);
-
-app.use(defaultLimiter);
 
 app.use(
   express.json({

@@ -1,6 +1,7 @@
-import type { Express } from "express";
+import type { Express, Router } from "express";
 import { createServer, type Server } from "http";
 import { z } from "zod";
+import express from "express";
 import { dbStorage } from "./db-storage";
 import { casperService } from "./services/casper";
 import { aiService } from "./services/ai";
@@ -21,6 +22,7 @@ import {
   sensitiveLimiter,
   compileLimiter,
   publicLimiter,
+  defaultLimiter,
 } from "./middleware/rateLimiter";
 import { formatErrorResponse, isZodError } from "./middleware/errorHandler";
 import { requireWalletHeader, optionalWalletAuth } from "./middleware/walletAuth";
