@@ -96,41 +96,7 @@ export default function Security() {
     analyzeMutation.mutate(contractCode);
   };
 
-  const mockRecentAudits: SecurityAnalysis[] = [
-    {
-      id: "1",
-      contractId: "c1",
-      vulnerabilities: [
-        {
-          id: "v1",
-          type: "Reentrancy",
-          severity: "critical",
-          description: "External call before state update",
-          location: "withdraw()",
-          fix: "Use checks-effects-interactions pattern",
-        },
-      ],
-      optimizations: ["Use unchecked blocks for safe math"],
-      bestPractices: ["Add events for state changes"],
-      riskScore: 75,
-      recommendation: "Critical fix required before deployment",
-      coreAnalysis: "",
-      analyzedAt: new Date(Date.now() - 3600000).toISOString(),
-    },
-    {
-      id: "2",
-      contractId: "c2",
-      vulnerabilities: [],
-      optimizations: ["Pack storage variables"],
-      bestPractices: ["Add NatSpec documentation"],
-      riskScore: 15,
-      recommendation: "Safe for deployment with minor optimizations",
-      coreAnalysis: "",
-      analyzedAt: new Date(Date.now() - 86400000).toISOString(),
-    },
-  ];
-
-  const displayAudits = recentAudits || mockRecentAudits;
+  const displayAudits = recentAudits || [];
 
   return (
     <div className="flex flex-col gap-6 p-6" data-testid="security-page">

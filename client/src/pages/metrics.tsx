@@ -162,48 +162,8 @@ export default function Metrics() {
     successRate: 95.77,
   };
 
-  const mockDeployments: Deployment[] = [
-    {
-      id: "1",
-      contractId: "c1",
-      contractName: "ERC20Token",
-      deployHash: "0xabc123...",
-      contractAddress: "casper1xyz...",
-      status: "confirmed",
-      network: "casper-testnet",
-      gasUsed: 2500000,
-      cost: 2.5,
-      timestamp: new Date(Date.now() - 3600000).toISOString(),
-      blockHeight: 1234567,
-    },
-    {
-      id: "2",
-      contractId: "c2",
-      contractName: "NFTMarketplace",
-      deployHash: "0xdef456...",
-      contractAddress: "casper1abc...",
-      status: "confirmed",
-      network: "casper-testnet",
-      gasUsed: 4800000,
-      cost: 4.8,
-      timestamp: new Date(Date.now() - 7200000).toISOString(),
-      blockHeight: 1234500,
-    },
-    {
-      id: "3",
-      contractId: "c3",
-      contractName: "StakingPool",
-      deployHash: "0xghi789...",
-      status: "pending",
-      network: "casper-testnet",
-      gasUsed: 0,
-      cost: 3.2,
-      timestamp: new Date(Date.now() - 1800000).toISOString(),
-    },
-  ];
-
   const displayMetrics = metrics || defaultMetrics;
-  const displayDeployments = deployments || mockDeployments;
+  const displayDeployments = deployments || [];
 
   return (
     <div className="flex flex-col gap-6 p-6" data-testid="metrics-page">

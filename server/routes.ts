@@ -17,6 +17,123 @@ import {
 } from "@shared/schema";
 import solc from "solc";
 
+function generateCasperWasmModule(contractName: string, bytecode: string, abi: any[]): string {
+  const evmBytecode = bytecode.startsWith('0x') ? bytecode.slice(2) : bytecode;
+  const bytecodeBytes = Array.from(Buffer.from(evmBytecode, 'hex'));
+  
+  const contractMetadata = JSON.stringify({
+    name: contractName,
+    abi: abi,
+    evmVersion: "cancun",
+    casperCompatible: true,
+    compiledAt: new Date().toISOString(),
+  });
+  const metadataBytes = Array.from(Buffer.from(contractMetadata, 'utf8'));
+  
+  const encodeULEB128 = (value: number): number[] => {
+    const result: number[] = [];
+    do {
+      let byte = value & 0x7f;
+      value >>= 7;
+      if (value !== 0) byte |= 0x80;
+      result.push(byte);
+    } while (value !== 0);
+    return result;
+  };
+  
+  const createSection = (sectionId: number, content: number[]): number[] => {
+    return [sectionId, ...encodeULEB128(content.length), ...content];
+  };
+  
+  const typeSection = createSection(0x01, [
+    0x02,
+    0x60, 0x00, 0x01, 0x7f,
+    0x60, 0x01, 0x7f, 0x01, 0x7f,
+  ]);
+  
+  const functionSection = createSection(0x03, [
+    0x03,
+    0x00,
+    0x01,
+    0x01,
+  ]);
+  
+  const memorySection = createSection(0x05, [
+    0x01,
+    0x00, 0x10,
+  ]);
+  
+  const exportNameBytes = Array.from(Buffer.from("call", 'utf8'));
+  const memoryNameBytes = Array.from(Buffer.from("memory", 'utf8'));
+  const exportSection = createSection(0x07, [
+    0x02,
+    exportNameBytes.length, ...exportNameBytes, 0x00, 0x00,
+    memoryNameBytes.length, ...memoryNameBytes, 0x02, 0x00,
+  ]);
+  
+  const initCode = [
+    0x41, 0x00,
+    0x0b,
+  ];
+  const getDataCode = [
+    0x20, 0x00,
+    0x28, 0x02, 0x00,
+    0x0b,
+  ];
+  
+  const codeSection = createSection(0x0a, [
+    0x02,
+    initCode.length + 1, 0x00, ...initCode,
+    getDataCode.length + 1, 0x00, ...getDataCode,
+  ]);
+  
+  const bytecodeDataSegment = [
+    0x00,
+    0x41, 0x00, 0x0b,
+    ...encodeULEB128(bytecodeBytes.length),
+    ...bytecodeBytes,
+  ];
+  
+  const metadataOffset = bytecodeBytes.length + 256;
+  const metadataDataSegment = [
+    0x00,
+    0x41, ...encodeULEB128(metadataOffset), 0x0b,
+    ...encodeULEB128(metadataBytes.length),
+    ...metadataBytes,
+  ];
+  
+  const dataSection = createSection(0x0b, [
+    0x02,
+    ...bytecodeDataSegment,
+    ...metadataDataSegment,
+  ]);
+  
+  const casperNameBytes = Array.from(Buffer.from('casper-wasm32', 'utf8'));
+  const casperSection = createSection(0x00, [
+    casperNameBytes.length, ...casperNameBytes,
+    0x01,
+    ...encodeULEB128(bytecodeBytes.length),
+    ...encodeULEB128(metadataBytes.length),
+  ]);
+  
+  const wasmMagic = [0x00, 0x61, 0x73, 0x6d];
+  const wasmVersion = [0x01, 0x00, 0x00, 0x00];
+  
+  const wasmModule = new Uint8Array([
+    ...wasmMagic,
+    ...wasmVersion,
+    ...casperSection,
+    ...typeSection,
+    ...functionSection,
+    ...memorySection,
+    ...exportSection,
+    ...codeSection,
+    ...dataSection,
+  ]);
+  
+  return Buffer.from(wasmModule).toString('hex');
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -263,12 +380,7 @@ export async function registerRoutes(
       const abi = contractOutput.abi || [];
       const gasEstimates = contractOutput.evm?.gasEstimates || {};
 
-      const wasmHeader = "0061736d01000000";
-      const wasmCode = wasmHeader + Buffer.from(JSON.stringify({
-        contract: contractName,
-        compiled: new Date().toISOString(),
-        casperCompatible: true,
-      })).toString("hex") + bytecode.substring(2, 66);
+      const wasmCode = generateCasperWasmModule(contractName, bytecode, abi);
 
       const compilation = await dbStorage.saveCompilation({
         contractName,
@@ -375,6 +487,62 @@ export async function registerRoutes(
       res.json({ suggestions, aiPowered: aiService.isAvailable() });
     } catch (error) {
       res.status(400).json({ error: "Failed to generate suggestions" });
+    }
+  });
+
+  app.post("/api/ai/autopilot", async (req, res) => {
+    try {
+      const { contractCode } = z.object({
+        contractCode: z.string().min(50),
+      }).parse(req.body);
+
+      const result = await aiService.autopilotOptimize(contractCode);
+      
+      await dbStorage.addActivity({
+        type: "optimize",
+        description: `AI Autopilot optimized contract (${result.changes.length} changes, ${result.gasEstimate.savings}% gas savings)`,
+        status: "success",
+      });
+
+      res.json({
+        success: true,
+        ...result,
+        aiPowered: aiService.isAvailable(),
+      });
+    } catch (error) {
+      console.error("AI autopilot error:", error);
+      res.status(500).json({ 
+        error: "Autopilot optimization failed", 
+        details: (error as Error).message 
+      });
+    }
+  });
+
+  app.post("/api/ai/review", async (req, res) => {
+    try {
+      const { contractCode } = z.object({
+        contractCode: z.string().min(50),
+      }).parse(req.body);
+
+      const result = await aiService.codeReviewWithPatches(contractCode);
+      
+      await dbStorage.addActivity({
+        type: "review",
+        description: `AI Code Review completed (${result.issues.length} issues, score: ${result.overallScore}/100)`,
+        status: result.overallScore >= 70 ? "success" : "pending",
+      });
+
+      res.json({
+        success: true,
+        ...result,
+        aiPowered: aiService.isAvailable(),
+      });
+    } catch (error) {
+      console.error("AI code review error:", error);
+      res.status(500).json({ 
+        error: "Code review failed", 
+        details: (error as Error).message 
+      });
     }
   });
 

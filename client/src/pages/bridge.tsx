@@ -46,9 +46,10 @@ function BridgeFlowVisualization({
   status: BridgeTransaction["status"];
 }) {
   const getStepStatus = (step: number) => {
-    const statusMap = {
+    const statusMap: Record<BridgeTransaction["status"], number> = {
       initiated: 1,
       locked: 2,
+      released: 2,
       minting: 3,
       completed: 4,
       failed: 0,
@@ -258,36 +259,7 @@ export default function Bridge() {
     });
   };
 
-  const mockTransactions: BridgeTransaction[] = [
-    {
-      id: "1",
-      sourceChain: "casper",
-      destinationChain: "sepolia",
-      sourceAddress: "casper1abc...",
-      destinationAddress: "0x123...",
-      amount: 100,
-      token: "CSPR",
-      status: "completed",
-      txHashSource: "0xabc123...",
-      txHashDestination: "0xdef456...",
-      timestamp: new Date(Date.now() - 3600000).toISOString(),
-      completedAt: new Date(Date.now() - 3000000).toISOString(),
-    },
-    {
-      id: "2",
-      sourceChain: "sepolia",
-      destinationChain: "casper",
-      sourceAddress: "0x456...",
-      destinationAddress: "casper1def...",
-      amount: 0.5,
-      token: "ETH",
-      status: "minting",
-      txHashSource: "0xghi789...",
-      timestamp: new Date(Date.now() - 1800000).toISOString(),
-    },
-  ];
-
-  const displayTransactions = transactions || mockTransactions;
+  const displayTransactions = transactions || [];
 
   return (
     <div className="flex flex-col gap-6 p-6" data-testid="bridge-page">

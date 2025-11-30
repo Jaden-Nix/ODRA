@@ -192,32 +192,7 @@ export default function Staking() {
     });
   };
 
-  const mockPositions: StakingPosition[] = [
-    {
-      id: "1",
-      amount: 5000,
-      currency: "CSPR",
-      apy: 8.5,
-      startDate: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString(),
-      endDate: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString(),
-      status: "active",
-      rewards: 17.26,
-      validator: "casper-validator-1",
-    },
-    {
-      id: "2",
-      amount: 2500,
-      currency: "CSPR",
-      apy: 7.2,
-      startDate: new Date(Date.now() - 45 * 24 * 60 * 60 * 1000).toISOString(),
-      endDate: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
-      status: "completed",
-      rewards: 24.66,
-      validator: "casper-validator-2",
-    },
-  ];
-
-  const displayPositions = positions || mockPositions;
+  const displayPositions = positions || [];
   const totalStaked = displayPositions.reduce((sum, p) => sum + p.amount, 0);
   const totalRewards = displayPositions.reduce((sum, p) => sum + p.rewards, 0);
   const avgApy =
