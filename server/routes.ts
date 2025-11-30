@@ -4,6 +4,11 @@ import { z } from "zod";
 import { dbStorage } from "./db-storage";
 import { casperService } from "./services/casper";
 import { aiService } from "./services/ai";
+import { walletService } from "./services/wallet";
+import { deploymentService } from "./services/deployment";
+import { stakingService } from "./services/staking";
+import { bridgeService } from "./services/bridge";
+import { CONFIG, getExplorerDeployUrl } from "./config";
 import {
   compileRequestSchema,
   analyzeRequestSchema,
@@ -38,7 +43,11 @@ export async function registerRoutes(
   app.get("/api/network/status", async (req, res) => {
     try {
       const status = await casperService.getNetworkStatus();
-      res.json(status);
+      res.json({
+        ...status,
+        explorerUrl: CONFIG.casper.explorerUrl,
+        networkName: CONFIG.casper.networkName,
+      });
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch network status" });
     }
@@ -46,10 +55,37 @@ export async function registerRoutes(
 
   app.get("/api/network/validators", async (req, res) => {
     try {
-      const validators = await casperService.getValidators();
+      const validators = await stakingService.getAllValidators();
       res.json(validators);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch validators" });
+    }
+  });
+
+  app.post("/api/wallet/connect", async (req, res) => {
+    try {
+      const { publicKeyHex } = z.object({
+        publicKeyHex: z.string().min(64).max(70),
+      }).parse(req.body);
+
+      const wallet = await walletService.connectWallet(publicKeyHex);
+      res.json(wallet);
+    } catch (error) {
+      console.error("Wallet connection error:", error);
+      res.status(400).json({ error: (error as Error).message || "Failed to connect wallet" });
+    }
+  });
+
+  app.post("/api/wallet/disconnect", async (req, res) => {
+    try {
+      const { publicKey } = z.object({
+        publicKey: z.string(),
+      }).parse(req.body);
+
+      await walletService.disconnectWallet(publicKey);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(400).json({ error: "Failed to disconnect wallet" });
     }
   });
 
@@ -59,10 +95,25 @@ export async function registerRoutes(
         publicKey: z.string().min(64),
       }).parse(req.body);
 
-      const walletInfo = await casperService.getAccountBalance(publicKey);
-      res.json(walletInfo);
+      const balance = await walletService.refreshWalletBalance(publicKey);
+      res.json(balance);
     } catch (error) {
       res.status(400).json({ error: "Failed to fetch wallet balance" });
+    }
+  });
+
+  app.get("/api/wallet/status/:publicKey", async (req, res) => {
+    try {
+      const { publicKey } = req.params;
+      const status = await walletService.getWalletStatus(publicKey);
+      
+      if (!status) {
+        return res.status(404).json({ error: "Wallet not connected" });
+      }
+      
+      res.json(status);
+    } catch (error) {
+      res.status(400).json({ error: "Failed to get wallet status" });
     }
   });
 
@@ -92,7 +143,6 @@ export async function registerRoutes(
         });
         
         return res.status(400).json({
-          id: compilation.id,
           ...compilation,
           timestamp: compilation.createdAt.toISOString(),
         });
@@ -134,7 +184,6 @@ export async function registerRoutes(
         });
         
         return res.status(400).json({
-          id: compilation.id,
           ...compilation,
           timestamp: compilation.createdAt.toISOString(),
         });
@@ -174,7 +223,6 @@ export async function registerRoutes(
         });
         
         return res.status(400).json({
-          id: compilation.id,
           ...compilation,
           timestamp: compilation.createdAt.toISOString(),
         });
@@ -198,7 +246,6 @@ export async function registerRoutes(
         });
         
         return res.status(400).json({
-          id: compilation.id,
           ...compilation,
           timestamp: compilation.createdAt.toISOString(),
         });
@@ -337,18 +384,34 @@ export async function registerRoutes(
 
   app.post("/api/deploy", async (req, res) => {
     try {
-      const { contractId, network } = z.object({
-        contractId: z.string(),
+      const { wasmCode, contractName, publicKeyHex, contractId, network } = z.object({
+        wasmCode: z.string().optional(),
+        contractName: z.string().min(1),
+        publicKeyHex: z.string().optional(),
+        contractId: z.string().optional(),
         network: z.string().default("casper-testnet"),
       }).parse(req.body);
+
+      if (publicKeyHex && wasmCode) {
+        const result = await deploymentService.deployContract({
+          wasmCode,
+          contractName,
+          publicKeyHex,
+        });
+
+        return res.json({
+          ...result,
+          message: "Deployment submitted to testnet",
+        });
+      }
 
       const deployHash = "0x" + Array.from({ length: 64 }, () => 
         Math.floor(Math.random() * 16).toString(16)
       ).join("");
 
       const deployment = await dbStorage.createDeployment({
-        contractId: parseInt(contractId) || null,
-        contractName: "Contract",
+        contractId: contractId ? parseInt(contractId) : null,
+        contractName,
         deployHash,
         status: "pending",
         network,
@@ -380,11 +443,12 @@ export async function registerRoutes(
       }, 5000);
 
       res.json({
-        id: deployment.id,
         ...deployment,
+        explorerLink: getExplorerDeployUrl(deployHash),
         timestamp: deployment.createdAt.toISOString(),
       });
     } catch (error) {
+      console.error("Deployment error:", error);
       res.status(500).json({ 
         error: "Deployment failed", 
         details: (error as Error).message 
@@ -395,7 +459,7 @@ export async function registerRoutes(
   app.get("/api/deploy/:deployHash", async (req, res) => {
     try {
       const { deployHash } = req.params;
-      const status = await casperService.getDeployStatus(deployHash);
+      const status = await deploymentService.getDeploymentStatus(deployHash);
       res.json(status);
     } catch (error) {
       res.status(500).json({ error: "Failed to get deploy status" });
@@ -404,13 +468,32 @@ export async function registerRoutes(
 
   app.get("/api/deployments", async (req, res) => {
     try {
-      const deployments = await dbStorage.getDeployments();
-      res.json(deployments.map(d => ({
+      const publicKey = req.query.publicKey as string | undefined;
+      
+      const deps = publicKey 
+        ? await dbStorage.getDeploymentsByUser(publicKey)
+        : await dbStorage.getDeployments();
+      
+      res.json(deps.map(d => ({
         ...d,
+        explorerLink: getExplorerDeployUrl(d.deployHash),
         timestamp: d.createdAt.toISOString(),
       })));
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch deployments" });
+    }
+  });
+
+  app.post("/api/deploy/estimate", async (req, res) => {
+    try {
+      const { wasmSize } = z.object({
+        wasmSize: z.number().positive(),
+      }).parse(req.body);
+
+      const estimate = deploymentService.estimateGasCost(wasmSize);
+      res.json(estimate);
+    } catch (error) {
+      res.status(400).json({ error: "Failed to estimate gas cost" });
     }
   });
 
@@ -421,7 +504,7 @@ export async function registerRoutes(
         duration: z.number().positive(),
       }).parse(req.body);
 
-      const apy = 8.5;
+      const apy = CONFIG.staking.defaultAPY;
       const advice = await aiService.getYieldAdvice(amount, duration, apy);
 
       res.json({
@@ -434,8 +517,33 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/staking/validators", async (req, res) => {
+    try {
+      const validators = await stakingService.getAllValidators();
+      res.json(validators);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch validators" });
+    }
+  });
+
+  app.get("/api/staking/stats", async (req, res) => {
+    try {
+      const stats = await stakingService.getNetworkStakingStats();
+      res.json(stats);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch staking stats" });
+    }
+  });
+
   app.get("/api/staking/positions", async (req, res) => {
     try {
+      const publicKey = req.query.publicKey as string | undefined;
+      
+      if (publicKey) {
+        const positions = await stakingService.getUserStakingPositions(publicKey);
+        return res.json(positions);
+      }
+
       const positions = await dbStorage.getStakingPositions();
       res.json(positions.map(p => ({
         ...p,
@@ -445,6 +553,20 @@ export async function registerRoutes(
       })));
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch staking positions" });
+    }
+  });
+
+  app.get("/api/staking/summary", async (req, res) => {
+    try {
+      const publicKey = req.query.publicKey as string;
+      if (!publicKey) {
+        return res.status(400).json({ error: "publicKey is required" });
+      }
+      
+      const summary = await stakingService.getStakingSummary(publicKey);
+      res.json(summary);
+    } catch (error) {
+      res.status(400).json({ error: "Failed to fetch staking summary" });
     }
   });
 
@@ -462,13 +584,24 @@ export async function registerRoutes(
     try {
       const data = stakeRequestSchema.parse(req.body);
       
+      if (data.publicKeyHex && data.validatorPublicKey) {
+        const position = await stakingService.createStakingPosition({
+          publicKeyHex: data.publicKeyHex,
+          validatorPublicKey: data.validatorPublicKey,
+          amountCSPR: data.amount,
+          lockDuration: data.duration,
+        });
+        
+        return res.json(position);
+      }
+      
       const endDate = new Date();
       endDate.setDate(endDate.getDate() + data.duration);
       
       const position = await dbStorage.createStakingPosition({
         amount: data.amount,
         currency: "CSPR",
-        apy: 8.5,
+        apy: CONFIG.staking.defaultAPY,
         startDate: new Date(),
         endDate,
         status: "active",
@@ -489,12 +622,59 @@ export async function registerRoutes(
         endDate: position.endDate?.toISOString(),
       });
     } catch (error) {
-      res.status(400).json({ error: "Staking failed" });
+      console.error("Staking error:", error);
+      res.status(400).json({ error: (error as Error).message || "Staking failed" });
+    }
+  });
+
+  app.post("/api/stake/withdraw", async (req, res) => {
+    try {
+      const { publicKeyHex, positionId } = z.object({
+        publicKeyHex: z.string(),
+        positionId: z.number(),
+      }).parse(req.body);
+
+      const result = await stakingService.withdrawStaking({
+        publicKeyHex,
+        positionId,
+      });
+
+      res.json(result);
+    } catch (error) {
+      res.status(400).json({ error: (error as Error).message || "Withdrawal failed" });
+    }
+  });
+
+  app.get("/api/bridge/supported", (req, res) => {
+    res.json({
+      tokens: bridgeService.getSupportedTokens(),
+      chains: bridgeService.getSupportedChains(),
+    });
+  });
+
+  app.post("/api/bridge/estimate-fee", async (req, res) => {
+    try {
+      const { amount, sourceChain } = z.object({
+        amount: z.number().positive(),
+        sourceChain: z.enum(["casper-test", "sepolia"]),
+      }).parse(req.body);
+
+      const estimate = bridgeService.estimateBridgeFee(amount, sourceChain);
+      res.json(estimate);
+    } catch (error) {
+      res.status(400).json({ error: "Failed to estimate fee" });
     }
   });
 
   app.get("/api/bridge/transactions", async (req, res) => {
     try {
+      const publicKey = req.query.publicKey as string | undefined;
+      
+      if (publicKey) {
+        const history = await bridgeService.getUserBridgeHistory(publicKey);
+        return res.json(history);
+      }
+
       const transactions = await dbStorage.getBridgeTransactions();
       res.json(transactions.map(tx => ({
         ...tx,
@@ -507,9 +687,55 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/bridge/stats", async (req, res) => {
+    try {
+      const stats = await bridgeService.getBridgeStats();
+      res.json(stats);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch bridge statistics" });
+    }
+  });
+
+  app.get("/api/bridge/status/:transferId", async (req, res) => {
+    try {
+      const { transferId } = req.params;
+      const status = await bridgeService.getBridgeTransferStatus(parseInt(transferId));
+      
+      if (!status) {
+        return res.status(404).json({ error: "Transfer not found" });
+      }
+      
+      res.json(status);
+    } catch (error) {
+      res.status(400).json({ error: "Failed to fetch transfer status" });
+    }
+  });
+
   app.post("/api/bridge", async (req, res) => {
     try {
       const data = bridgeRequestSchema.parse(req.body);
+      
+      if (data.publicKeyHex && data.destinationAddress) {
+        if (data.sourceChain === "casper-test") {
+          const result = await bridgeService.initiateTransferCasperToSepolia({
+            publicKeyHex: data.publicKeyHex,
+            amountCSPR: data.amount,
+            sepoliaAddress: data.destinationAddress,
+            token: data.token,
+          });
+          
+          return res.json(result);
+        } else {
+          const result = await bridgeService.initiateTransferSepoliaToCasper({
+            sepoliaAddress: data.sourceAddress || "",
+            amountETH: data.amount,
+            casperPublicKey: data.publicKeyHex,
+            token: data.token,
+          });
+          
+          return res.json(result);
+        }
+      }
       
       const bridgeAnalysis = await aiService.analyzeBridgeTransaction(
         data.sourceChain,
@@ -562,7 +788,8 @@ export async function registerRoutes(
         aiPowered: aiService.isAvailable(),
       });
     } catch (error) {
-      res.status(400).json({ error: "Bridge transaction failed" });
+      console.error("Bridge error:", error);
+      res.status(400).json({ error: (error as Error).message || "Bridge transaction failed" });
     }
   });
 
@@ -640,6 +867,20 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/activities", async (req, res) => {
+    try {
+      const limit = parseInt(req.query.limit as string) || 20;
+      const activities = await dbStorage.getRecentActivities(limit);
+      res.json(activities.map(a => ({
+        ...a,
+        id: a.id.toString(),
+        timestamp: a.createdAt.toISOString(),
+      })));
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch activities" });
+    }
+  });
+
   app.get("/api/ai/status", (req, res) => {
     res.json({
       available: aiService.isAvailable(),
@@ -648,6 +889,27 @@ export async function registerRoutes(
         yieldAdvice: true,
         codeSuggestions: true,
         bridgeAnalysis: true,
+      },
+    });
+  });
+
+  app.get("/api/config", (req, res) => {
+    res.json({
+      network: {
+        name: CONFIG.casper.networkName,
+        chainName: CONFIG.casper.chainName,
+        explorerUrl: CONFIG.casper.explorerUrl,
+      },
+      staking: {
+        minLockDays: CONFIG.staking.minLockDays,
+        maxLockDays: CONFIG.staking.maxLockDays,
+        minStakeAmount: CONFIG.staking.minStakeAmount,
+        defaultAPY: CONFIG.staking.defaultAPY,
+      },
+      bridge: {
+        minAmount: CONFIG.bridge.minBridgeAmount,
+        maxAmount: CONFIG.bridge.maxBridgeAmount,
+        supportedTokens: CONFIG.bridge.supportedTokens,
       },
     });
   });

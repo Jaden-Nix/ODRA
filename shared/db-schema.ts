@@ -1,4 +1,4 @@
-import { pgTable, text, integer, boolean, timestamp, jsonb, real, serial, varchar } from "drizzle-orm/pg-core";
+import { pgTable, text, integer, boolean, timestamp, jsonb, real, serial, varchar, numeric } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -39,11 +39,14 @@ export const deployments = pgTable("deployments", {
   contractName: varchar("contract_name", { length: 255 }).notNull(),
   deployHash: varchar("deploy_hash", { length: 255 }).notNull(),
   contractAddress: varchar("contract_address", { length: 255 }),
+  userPublicKey: varchar("user_public_key", { length: 255 }),
+  wasmCodeHash: varchar("wasm_code_hash", { length: 255 }),
   status: varchar("status", { length: 50 }).notNull().default("pending"),
   network: varchar("network", { length: 100 }).notNull().default("casper-testnet"),
   gasUsed: integer("gas_used").default(0),
   cost: real("cost").default(0),
   blockHeight: integer("block_height"),
+  blockHash: varchar("block_hash", { length: 255 }),
   error: text("error"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
@@ -62,28 +65,36 @@ export const securityAnalyses = pgTable("security_analyses", {
 
 export const stakingPositions = pgTable("staking_positions", {
   id: serial("id").primaryKey(),
+  userPublicKey: varchar("user_public_key", { length: 255 }),
+  validatorPublicKey: varchar("validator_public_key", { length: 255 }),
   amount: real("amount").notNull(),
+  amountMotes: varchar("amount_motes", { length: 100 }),
   currency: varchar("currency", { length: 20 }).notNull().default("CSPR"),
   apy: real("apy").default(8.5),
+  lockDuration: integer("lock_duration"),
   startDate: timestamp("start_date").defaultNow().notNull(),
   endDate: timestamp("end_date"),
   status: varchar("status", { length: 50 }).notNull().default("active"),
   rewards: real("rewards").default(0),
   validator: varchar("validator", { length: 255 }),
   txHash: varchar("tx_hash", { length: 255 }),
+  lastUpdated: timestamp("last_updated").defaultNow(),
 });
 
 export const bridgeTransactions = pgTable("bridge_transactions", {
   id: serial("id").primaryKey(),
+  userPublicKey: varchar("user_public_key", { length: 255 }),
   sourceChain: varchar("source_chain", { length: 100 }).notNull(),
   destinationChain: varchar("destination_chain", { length: 100 }).notNull(),
   sourceAddress: varchar("source_address", { length: 255 }),
   destinationAddress: varchar("destination_address", { length: 255 }),
   amount: real("amount").notNull(),
   token: varchar("token", { length: 50 }).notNull(),
+  fee: real("fee").default(0),
   status: varchar("status", { length: 50 }).notNull().default("initiated"),
   txHashSource: varchar("tx_hash_source", { length: 255 }),
   txHashDestination: varchar("tx_hash_destination", { length: 255 }),
+  errorMessage: text("error_message"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   completedAt: timestamp("completed_at"),
 });
@@ -100,8 +111,12 @@ export const activities = pgTable("activities", {
 export const walletConnections = pgTable("wallet_connections", {
   id: serial("id").primaryKey(),
   publicKey: varchar("public_key", { length: 255 }).notNull().unique(),
+  accountHash: varchar("account_hash", { length: 255 }),
   address: varchar("address", { length: 255 }).notNull(),
   networkId: varchar("network_id", { length: 100 }).notNull().default("casper-testnet"),
+  balance: varchar("balance", { length: 100 }),
+  balanceCSPR: real("balance_cspr"),
+  nonce: varchar("nonce", { length: 255 }),
   lastConnected: timestamp("last_connected").defaultNow().notNull(),
 });
 

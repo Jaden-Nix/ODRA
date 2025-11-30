@@ -1,4 +1,4 @@
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, and } from "drizzle-orm";
 import { db } from "./db";
 import {
   contracts,
@@ -23,6 +23,7 @@ import {
   type InsertBridgeTransaction,
   type Activity,
   type InsertActivity,
+  type WalletConnection,
 } from "@shared/db-schema";
 
 export interface DashboardStats {
@@ -81,8 +82,19 @@ export class DbStorage {
     return deployment;
   }
 
+  async getDeploymentByHash(deployHash: string): Promise<Deployment | undefined> {
+    const [deployment] = await db.select().from(deployments).where(eq(deployments.deployHash, deployHash));
+    return deployment;
+  }
+
   async getDeployments(): Promise<Deployment[]> {
     return db.select().from(deployments).orderBy(desc(deployments.createdAt));
+  }
+
+  async getDeploymentsByUser(publicKeyHex: string): Promise<Deployment[]> {
+    return db.select().from(deployments)
+      .where(eq(deployments.userPublicKey, publicKeyHex))
+      .orderBy(desc(deployments.createdAt));
   }
 
   async createDeployment(deployment: InsertDeployment): Promise<Deployment> {
@@ -109,8 +121,19 @@ export class DbStorage {
     return newAnalysis;
   }
 
+  async getStakingPosition(id: number): Promise<StakingPosition | undefined> {
+    const [position] = await db.select().from(stakingPositions).where(eq(stakingPositions.id, id));
+    return position;
+  }
+
   async getStakingPositions(): Promise<StakingPosition[]> {
     return db.select().from(stakingPositions).orderBy(desc(stakingPositions.startDate));
+  }
+
+  async getStakingPositionsByUser(publicKeyHex: string): Promise<StakingPosition[]> {
+    return db.select().from(stakingPositions)
+      .where(eq(stakingPositions.userPublicKey, publicKeyHex))
+      .orderBy(desc(stakingPositions.startDate));
   }
 
   async createStakingPosition(position: InsertStakingPosition): Promise<StakingPosition> {
@@ -123,8 +146,19 @@ export class DbStorage {
     return updated;
   }
 
+  async getBridgeTransaction(id: number): Promise<BridgeTransaction | undefined> {
+    const [tx] = await db.select().from(bridgeTransactions).where(eq(bridgeTransactions.id, id));
+    return tx;
+  }
+
   async getBridgeTransactions(): Promise<BridgeTransaction[]> {
     return db.select().from(bridgeTransactions).orderBy(desc(bridgeTransactions.createdAt));
+  }
+
+  async getBridgeTransactionsByUser(publicKeyHex: string): Promise<BridgeTransaction[]> {
+    return db.select().from(bridgeTransactions)
+      .where(eq(bridgeTransactions.userPublicKey, publicKeyHex))
+      .orderBy(desc(bridgeTransactions.createdAt));
   }
 
   async createBridgeTransaction(tx: InsertBridgeTransaction): Promise<BridgeTransaction> {
@@ -144,6 +178,49 @@ export class DbStorage {
 
   async getRecentActivities(limit = 10): Promise<Activity[]> {
     return db.select().from(activities).orderBy(desc(activities.createdAt)).limit(limit);
+  }
+
+  async getWalletConnection(publicKey: string): Promise<WalletConnection | undefined> {
+    const [connection] = await db.select().from(walletConnections).where(eq(walletConnections.publicKey, publicKey));
+    return connection;
+  }
+
+  async saveWalletConnection(
+    publicKey: string, 
+    address: string, 
+    networkId: string,
+    balance?: string,
+    balanceCSPR?: number
+  ): Promise<WalletConnection> {
+    const existing = await db.select().from(walletConnections).where(eq(walletConnections.publicKey, publicKey));
+    
+    if (existing.length > 0) {
+      const [updated] = await db.update(walletConnections)
+        .set({ 
+          lastConnected: new Date(),
+          balance: balance || existing[0].balance,
+          balanceCSPR: balanceCSPR ?? existing[0].balanceCSPR,
+          accountHash: address,
+        })
+        .where(eq(walletConnections.publicKey, publicKey))
+        .returning();
+      return updated;
+    }
+    
+    const [newConnection] = await db.insert(walletConnections).values({
+      publicKey,
+      address,
+      accountHash: address,
+      networkId,
+      balance,
+      balanceCSPR,
+    }).returning();
+    
+    return newConnection;
+  }
+
+  async removeWalletConnection(publicKey: string): Promise<void> {
+    await db.delete(walletConnections).where(eq(walletConnections.publicKey, publicKey));
   }
 
   async getDashboardStats(): Promise<DashboardStats> {
@@ -190,25 +267,6 @@ export class DbStorage {
         ? (successfulCompilations.length / allCompilations.length) * 100
         : 0,
     };
-  }
-
-  async saveWalletConnection(publicKey: string, address: string, networkId: string) {
-    const existing = await db.select().from(walletConnections).where(eq(walletConnections.publicKey, publicKey));
-    
-    if (existing.length > 0) {
-      await db.update(walletConnections)
-        .set({ lastConnected: new Date() })
-        .where(eq(walletConnections.publicKey, publicKey));
-      return existing[0];
-    }
-    
-    const [newConnection] = await db.insert(walletConnections).values({
-      publicKey,
-      address,
-      networkId,
-    }).returning();
-    
-    return newConnection;
   }
 }
 
