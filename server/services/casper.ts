@@ -1,4 +1,7 @@
-const CASPER_TESTNET_RPC = "https://rpc.testnet.casperlabs.io/rpc";
+const CASPER_RPC_ENDPOINTS = [
+  "https://rpc.testnet.casperlabs.io/rpc",
+  "https://node-clarity-testnet.make.services/rpc",
+];
 const CASPER_TESTNET_STATUS = "https://rpc.testnet.casperlabs.io/status";
 const NETWORK_NAME = "casper-test";
 const CHAIN_NAME = "casper-test";
@@ -50,31 +53,34 @@ class CasperService {
   private async rpcCall(method: string, params: any[] = []): Promise<any> {
     this.requestId++;
     
-    try {
-      const response = await fetch(CASPER_TESTNET_RPC, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          jsonrpc: "2.0",
-          id: this.requestId,
-          method,
-          params,
-        }),
-      });
+    for (const endpoint of CASPER_RPC_ENDPOINTS) {
+      try {
+        const response = await fetch(endpoint, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            jsonrpc: "2.0",
+            id: this.requestId,
+            method,
+            params,
+          }),
+        });
 
-      const data: RpcResponse = await response.json();
-      
-      if (data.error) {
-        throw new Error(`RPC Error: ${data.error.message}`);
+        const data: RpcResponse = await response.json();
+        
+        if (data.error) {
+          throw new Error(`RPC Error: ${data.error.message}`);
+        }
+        
+        return data.result;
+      } catch (error) {
+        console.error(`RPC call to ${endpoint} failed:`, error);
       }
-      
-      return data.result;
-    } catch (error) {
-      console.error(`RPC call ${method} failed:`, error);
-      throw error;
     }
+    
+    throw new Error("All RPC endpoints failed");
   }
 
   async getNetworkStatus(): Promise<NetworkStatus> {
@@ -311,7 +317,7 @@ class CasperService {
   }
 
   getRpcEndpoint(): string {
-    return CASPER_TESTNET_RPC;
+    return CASPER_RPC_ENDPOINTS[0];
   }
 }
 
