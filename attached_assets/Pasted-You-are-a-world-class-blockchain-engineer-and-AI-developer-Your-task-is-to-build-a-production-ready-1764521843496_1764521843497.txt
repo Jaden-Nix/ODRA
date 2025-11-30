@@ -1,0 +1,119 @@
+You are a world-class blockchain engineer and AI developer. Your task is to build a production-ready ODRA-EVM Universal Contract Engine for Casper Testnet that fully integrates AI features without any mocked behavior. All contracts, AI logic, and demos must execute live on Casper Testnet.
+
+Deliverables must include all code (Rust, TypeScript/Node.js, Solidity), deployment instructions, test scripts, dashboards, and live demo flows suitable for hackathon submission. The final product must also include AI-powered developer assistance and liquid staking advisory features.
+
+⸻
+
+1. Core Goals
+	1.	Compile Solidity smart contracts → Casper-compatible Wasm
+	2.	Deploy live to Casper Testnet via ODRA framework
+	3.	Allow cross-chain interaction: Casper Testnet → EVM Testnet
+	4.	Provide AI assistant for:
+	•	Contract security and optimization suggestions
+	•	Auto-translation of Solidity patterns → Casper storage & events
+	5.	Provide AI yield advisor for LST contracts (cCSPR):
+	•	Recommend staking strategy based on on-chain data
+	•	Compute projected yield in real-time
+	6.	Provide a CLI/SDK for developers: deploy contracts, call functions, query AI suggestions
+	7.	Include live dashboards showing balances, staking, cross-chain status, and AI recommendations
+
+⸻
+
+2. Technical Specifications
+	•	Input: Solidity source code or bytecode
+	•	Output: Wasm contract ready for Casper Testnet
+	•	Framework: Odra (Casper smart contract framework)
+	•	Programming Languages: Rust for Wasm wrapper, TypeScript/Node.js for CLI/SDK, Python/JS for AI module
+	•	Features:
+	•	Full contract translation & compilation
+	•	AI-powered code review, suggestions, and best practices
+	•	Automatic event mapping (Solidity → Casper)
+	•	Cross-chain messaging & token wrapping
+	•	AI-powered staking advice dashboard
+	•	Gas abstraction and user-friendly CLI
+
+⸻
+
+3. Architecture
+
+AI must generate a full architecture diagram:
+	•	Solidity contract → ODRA-EVM compiler → Casper Wasm
+	•	AI Assistant module integrated into CLI
+	•	Live staking dashboard & AI advisory engine
+	•	Cross-chain wrapper for Testnet EVM chain
+	•	Deployment & test flow for live contracts
+
+⸻
+
+4. Step-by-Step Live Build
+	1.	Parse Solidity source code
+	2.	Compile bytecode → intermediate representation
+	3.	Map storage slots & events to Casper dictionaries
+	4.	Wrap functions as Wasm entrypoints
+	5.	Deploy live ERC-20 / ERC-721 contracts on Casper Testnet
+	6.	Integrate AI assistant:
+	•	On deploy or call, provide security, optimization, and Casper integration suggestions
+	7.	Integrate AI staking advisor for cCSPR:
+	•	Pull real staking stats from Testnet
+	•	Suggest optimal staking split/strategy
+	8.	Deploy a cross-chain wrapper on EVM Testnet (Sepolia)
+	9.	Demonstrate live staking → receive cCSPR → wrap to w-cCSPR → show balances update
+	10.	Generate live test scripts that call functions, track events, and validate AI recommendations
+
+⸻
+
+5. CLI / SDK Requirements
+	•	odra-evm deploy <contract.sol> → compiles Solidity → Wasm → deploys to Casper Testnet
+	•	odra-evm call <function> → executes function, shows AI suggestions
+	•	odra-evm stake <amount> → stakes Testnet CSPR → returns live cCSPR balance + AI staking advice
+	•	odra-evm cross-chain <amount> → wraps cCSPR → transfers to EVM Testnet, shows balances live
+
+⸻
+
+6. AI Modules
+	•	AI Developer Assistant:
+	•	Suggests optimizations, security checks, Casper-specific best practices
+	•	Generates real-time tips for deployed contracts
+	•	AI Yield Advisor:
+	•	Pulls live staking data from Casper Testnet
+	•	Predicts projected yield, suggests optimal staking allocation
+	•	AI Cross-Chain Helper:
+	•	Monitors real-time bridging events, estimates fees, detects failed transactions
+
+⸻
+
+7. Demo Script (Hackathon Ready)
+	1.	Deploy ERC-20 contract via ODRA-EVM CLI on Casper Testnet
+	2.	Show AI assistant suggestions during deployment
+	3.	Stake Testnet CSPR → mint cCSPR → show AI yield recommendation
+	4.	Wrap cCSPR → transfer → EVM Testnet → show live balance
+	5.	Execute transfer() on ERC-20 contract → show live token balances update
+	6.	Highlight AI suggestions and advisory panel on dashboard
+
+⸻
+
+8. Testing & Validation
+	•	Unit tests and integration tests for all functions
+	•	Validate cross-chain messages
+	•	Validate staking yield calculations
+	•	Validate AI suggestions accuracy against live testnet results
+
+⸻
+
+9. Deliverables
+	•	Rust contracts (Wasm wrapper)
+	•	TypeScript / Node.js CLI & SDK
+	•	Solidity example contracts (ERC-20, ERC-721, Liquid Staking LST)
+	•	AI modules for developer assistance & staking advisory
+	•	Live test scripts & dashboard
+	•	Architecture diagrams
+	•	README.md and hackathon-ready instructions
+	•	Video/demo flow for judges
+
+⸻
+
+10. Constraints
+	•	Everything must execute live on Casper Testnet
+	•	AI must not mock behavior; all outputs and suggestions reflect live data
+	•	All contracts must follow security best practices
+	•	CLI must be one-command deployment ready

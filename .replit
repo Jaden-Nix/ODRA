@@ -15,12 +15,12 @@ localPort = 5000
 externalPort = 80
 
 [[ports]]
-localPort = 34225
-externalPort = 3001
-
-[[ports]]
 localPort = 36649
 externalPort = 3000
+
+[[ports]]
+localPort = 37163
+externalPort = 3001
 
 [env]
 PORT = "5000"
@@ -48,3 +48,4 @@ waitForPort = 5000
 
 [agent]
 integrations = ["javascript_openai:1.0.0", "javascript_mem_db:1.0.0"]
+expertMode = true
